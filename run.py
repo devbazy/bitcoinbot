@@ -5,6 +5,7 @@ import wykop
 import urllib
 import urllib2
 import datetime
+import html2text
 from unidecode import unidecode
 try: import simplejson as json
 except ImportError: import json
@@ -85,6 +86,103 @@ def _parse_json(data):
     result = json.loads(data, object_hook=lambda x: AttrDict(x))
     return result
 
+def get_entries_from_tag(api, tag, lenght = 60, max = 5):
+    data={}
+    entries = api.tag(tag)
+    micro_entries = [(entry['vote_count'], entry) for entry in entries['items'] if entry['type'] == 'entry' and entry['author'] != 'bitcoinbot']
+
+    top_micros = sorted(micro_entries)[::-1][:max]
+    top_micros = [ micro[1] for micro in top_micros if micro[0] != 0]
+
+    if len(top_micros) > 0:
+        data[tag + "_entry_micros"] = "\nPopularne ostatnio wpisy na mikro z tagu [%s](http://www.wykop.pl/tag/%s): \n" % (tag, tag)
+
+        for micro_entry in top_micros:
+
+            title = html2text.html2text(micro_entry['body'])
+            title = re.sub('\n', '. ', title)
+            title = re.sub('#', '', title)
+            title = re.sub('(\. )+', '. ', title)
+            title = re.sub('\ +', ' ', title)
+
+            micro_entry['title'] = title[:lenght] + "..."
+            data[tag + "_entry_micros"] += '- ["%(title)s"](%(url)s) [+%(vote_count)s] by @[%(author)s](http://www.wykop.pl/ludzie/%(author)s)\n' % micro_entry
+
+        data[tag + "_entry_micros"] += "\n"
+
+    links = [entry for entry in entries['items'] if entry['type'] == 'link']
+
+    if len(links) > 0:
+        data[tag + "_entry_links"] = "\nOstatnio dodane znaleziska na temat %sa:\n" % tag
+
+        for link in links:
+            link['title'] = re.sub('#', '', link['title'])
+            data[tag + "_entry_links"] += "- [%(title)s](%(url)s) [+%(vote_count)s/-%(report_count)s]\n" % link
+
+        data[tag + "_entry_links"] += "\n"
+
+    return data
+
+def get_prices(trickers):
+    data={}
+    data["entry_price"] = ""
+    for tricker_data in trickers:
+
+        for service in tricker_data["services"]:
+            for currency in service["currency"]:
+                print service["name"] +  " - " + currency
+
+                cur_fun = service.get("cur_fun", lambda c:c)
+
+                response = _request(service["ticker"], cur_fun(currency))
+                t = _parse_json(response)
+                last_extractor = service["last_extractor"]
+
+                format_ = "{0:6.%df}" % ( 4 if currency == "BTC" else 2)
+                data[service["name"] + '_price_' + currency] = format_.format(last_extractor(t))
+
+                print " -  OK"
+
+        curs = set()
+        for service in tricker_data["services"]:
+            curs |= set(service['currency'])
+
+        data["entry_price"] += '`  {:10s} '.format("CENY %s" % tricker_data["main_currency"]) + "|"
+
+        for currency in curs:
+            data["entry_price"] += '{:>8s} '.format(currency) + "|"
+        data["entry_price"] += "`\n"
+
+        data["entry_price"] += "`" + str('-'*(len(curs)*10+14)) +   "`\n"
+
+        for service in tricker_data["services"]:
+            data["entry_price"] += '`{:12s} '.format(service["name"]) + "|"
+            for currency in curs:
+                if service["name"] + '_price_' + currency in data:
+                    data["entry_price"] += "{:>8s} ".format(data[service["name"] + '_price_' + currency]) + "|"
+                else:
+                    data["entry_price"] += "{:>8s} ".format("") + "|"
+
+            data["entry_price"] += '`\n'
+
+        data["entry_price"] += "\n\n"
+
+    data["entry_price"] = data["entry_price"].replace(" ", u"\u00A0")
+    return data
+
+def get_fallow_tags(h):
+    data = {}
+    data["fallow_tags"]="\n\n%s - tag do subskrybcji co 24h (12:00)\n" % generate_sub_tag(h, 24)
+    data["fallow_tags"]+= "%s - tag do subskrybcji co 12h (0:00/12:00)\n" % generate_sub_tag(h, 12)
+    data["fallow_tags"]+= "%s - tag do subskrybcji co 6h (0/6/12/18)\n" % generate_sub_tag(h, 6)
+    data["fallow_tags"]+= "%s - tag do subskrybcji co 3h (0/3/6/9/12/15/18/21)\n" % generate_sub_tag(h, 3)
+    data["fallow_tags"]+= "%s - tag do subskrybcji co godzine\n" % generate_sub_tag(h, 1)
+
+    return data
+
+def get_ps():
+    return {"ps": "#bitcoinbot\n\nPS. Stworzyl mnie @[noisy](http://www.wykop.pl/ludzie/noisy), do niego prosze kierowac pomysly i sugestie na temat mojego rozwoju."}
+
 def generate_sub_tag(h, arg):
     return "#bitcoinbot%s" % arg if h % arg == 0 else "[bitcoinbot%s](http://www.wykop.pl/tag/bitcoinbot%s/)" % (arg, arg)
 
@@ -98,118 +196,24 @@ def main():
     api = wykop.WykopAPI(APPKEY, SECRETKEY)
     api.authenticate(LOGIN, ACCOUNTKEY)
 
-    entries = api.tag("bitcoin")
-    micro_entries = [(entry['vote_count'], entry) for entry in entries['items'] if entry['type'] == 'entry' and entry['author'] != 'bitcoinbot']
-
-    top_micros = sorted(micro_entries)[::-1][:5]
-    top_micros = [ micro[1] for micro in top_micros if micro[0] != 0]
-
-    if len(top_micros) > 0:
-        entry_micros = "\nPopularne ostatnio wpisy na mikro z tagu [bitcoin](http://www.wykop.pl/tag/bitcoin):\n"
-
-        for micro_entry in top_micros:
-            import html2text
-            title = html2text.html2text(micro_entry['body'])
-            title = re.sub('\n', '. ', title)
-            title = re.sub('#', '', title)
-            title = re.sub('(\. )+', '. ', title)
-            title = re.sub('\ +', ' ', title)
-
-            micro_entry['title'] = title[:60] + "..."
-            entry_micros += '- ["%(title)s"](%(url)s) [+%(vote_count)s] by @[%(author)s](http://www.wykop.pl/ludzie/%(author)s)\n' % micro_entry
-
-        entry_micros += "\n"
-
-    links = [entry for entry in entries['items'] if entry['type'] == 'link']
-
-    entry_links = None
-
-    if len(links) > 0:
-        entry_links = "\nOstatnio dodane znaleziska na temat bitcoina:\n"
-
-        for link in links:
-            link['title'] = re.sub('#', '', link['title'])
-            entry_links += "- [%(title)s](%(url)s) [+%(vote_count)s/-%(report_count)s]\n" % link
-
-        entry_links += "\n"
-
     data = {}
 
-    entry_price = ""
-    for tricker_data in TRICKERS:
+    data.update(get_prices(TRICKERS))
+    data.update(get_entries_from_tag(api, "bitcoin"))
+    data.update(get_ps())
+    data.update(get_fallow_tags(datetime.datetime.now().hour))
 
-        for service in tricker_data["services"]:
-            for currency in service["currency"]:
-                print service["name"] +  " - " + currency
+    entry = ""
 
-                cur_fun = service.get("cur_fun", lambda c:c)
+    for entry_data in ["bitcoin_entry_links", "bitcoin_entry_micros", "ps"]:
+        entry += data[entry_data]
 
-                response = _request(service["ticker"], cur_fun(currency))
-                t = _parse_json(response)
-                last_extractor = service["last_extractor"]
+    entry = data["entry_price"] + unidecode(entry)
 
-                if currency == "BTC":
-                    data[service["name"] + '_price_' + currency] = "{0:6.4f}".format(last_extractor(t))
-                else:
-                    data[service["name"] + '_price_' + currency] = "{0:6.2f}".format(last_extractor(t))
-
-
-                print " -  OK"
-
-        curs = set()
-        for service in tricker_data["services"]:
-            curs |= set(service['currency'])
-
-
-        entry_price += '`  {:10s} '.format("CENY %s" % tricker_data["main_currency"]) + "|"
-
-        for currency in curs:
-            entry_price += '{:>8s} '.format(currency) + "|"
-        entry_price += "`\n"
-
-        entry_price += "`" + str('-'*(len(curs)*10+14)) +   "`\n"
-
-        for service in tricker_data["services"]:
-            entry_price += '`{:12s} '.format(service["name"]) + "|"
-            for currency in curs:
-                if service["name"] + '_price_' + currency in data:
-                    entry_price += "{:>8s} ".format(data[service["name"] + '_price_' + currency]) + "|"
-                else:
-                    entry_price += "{:>8s} ".format("") + "|"
-
-            entry_price += '`\n'
-
-        entry_price += "\n\n"
-
-    entry_price = entry_price.replace(" ", u"\u00A0")
-
-    entry = ''
-
-    if entry_links:
-        entry += entry_links
-
-    if entry_micros:
-        entry += entry_micros
-
-    entry +="#bitcoinbot\n\n"\
-            "PS. Stworzyl mnie @[noisy](http://www.wykop.pl/ludzie/noisy), do niego prosze kierowac pomysly i sugestie na temat mojego rozwoju."
-
-
-    h = datetime.datetime.now().hour
-
-    fallow_tags="\n\n%s - tag do subskrybcji co 24h (12:00)\n" % generate_sub_tag(h, 24)
-    fallow_tags+= "%s - tag do subskrybcji co 12h (0:00/12:00)\n" % generate_sub_tag(h, 12)
-    fallow_tags+= "%s - tag do subskrybcji co 6h (0/6/12/18)\n" % generate_sub_tag(h, 6)
-    fallow_tags+= "%s - tag do subskrybcji co 3h (0/3/6/9/12/15/18/21)\n" % generate_sub_tag(h, 3)
-    fallow_tags+= "%s - tag do subskrybcji co godzine\n" % generate_sub_tag(h, 1)
-
-    entry += fallow_tags
-
-    entry = entry_price + unidecode(entry)
-
+    print entry
     api.add_entry(entry)
-
     print "OK!"
 
 if __name__ == '__main__':
     main()
+
