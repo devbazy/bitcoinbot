@@ -205,8 +205,8 @@ def main():
 
     entry = ""
 
-    for entry_data in ["bitcoin_entry_links", "bitcoin_entry_micros", "ps"]:
-        entry += data[entry_data]
+    for entry_data in ["bitcoin_entry_links", "bitcoin_entry_micros", "ps", "fallow_tags"]:
+        entry += data.get(entry_data, "")
 
     entry = data["entry_price"] + unidecode(entry)
 
