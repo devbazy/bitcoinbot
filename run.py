@@ -139,7 +139,7 @@ def get_prices(trickers):
                 last_extractor = service["last_extractor"]
 
                 format_ = "{0:6.%df}" % ( 4 if currency == "BTC" else 2)
-                data[service["name"] + '_price_' + currency] = format_.format(last_extractor(t))
+                data[service["name"] + '_price_' + currency] = format_.format(last_extractor(t)).replace(".", ",")
 
                 print " -  OK"
 
