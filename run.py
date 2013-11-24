@@ -130,7 +130,7 @@ def get_prices(trickers):
 
         for service in tricker_data["services"]:
             for currency in service["currency"]:
-                print service["name"] +  " - " + currency
+                #print service["name"] +  " - " + currency
 
                 cur_fun = service.get("cur_fun", lambda c:c)
 
@@ -141,7 +141,7 @@ def get_prices(trickers):
                 format_ = "{0:6.%df}" % ( 4 if currency == "BTC" else 2)
                 data[service["name"] + '_price_' + currency] = format_.format(last_extractor(t)).replace(".", ",")
 
-                print " -  OK"
+                #print " -  OK"
 
         curs = set()
         for service in tricker_data["services"]:
@@ -210,9 +210,9 @@ def main():
 
     entry = data["entry_price"] + unidecode(entry)
 
-    print entry
+    #print entry
     api.add_entry(entry)
-    print "OK!"
+    #print "OK!"
 
 if __name__ == '__main__':
     main()
