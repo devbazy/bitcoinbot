@@ -10,6 +10,7 @@ from unidecode import unidecode
 try: import simplejson as json
 except ImportError: import json
 import contextlib
+import time
 
 TRICKERS = [
     {
@@ -66,6 +67,27 @@ TRICKERS = [
                 "last_extractor" : lambda t: float(t['data']["last"]),
             },
         ]
+    },
+    {
+        "main_currency":"FTC",
+        "services":[
+            {
+                "name":"btc-e",
+                "ticker":"https://btc-e.com/api/2/ftc_%(currency)s/ticker/",
+                "currency":["BTC"],
+                "cur_fun" : lambda t:t.lower(),
+                "last_extractor" : lambda t:float(t['ticker']['last']),
+                "precision":5
+            },
+            {
+                "name":"crypto-trade",
+                "ticker":"https://www.crypto-trade.com/api/1/ticker/ftc_%(currency)s",
+                "currency":["BTC", "USD"],
+                "cur_fun" : lambda t:t.lower(),
+                "last_extractor" : lambda t: float(t['data']["last"]),
+                "precision":5
+            },
+        ]
     }
 ]
 
@@ -80,7 +102,7 @@ def _request(url, currency):
         with contextlib.closing(urllib2.urlopen(req)) as f:
             return f.read()
     except Exception, e:
-        print str(e.code)
+        return "ERR"
 
 def _parse_json(data):
     result = json.loads(data, object_hook=lambda x: AttrDict(x))
@@ -130,18 +152,21 @@ def get_prices(trickers):
 
         for service in tricker_data["services"]:
             for currency in service["currency"]:
-                #print service["name"] +  " - " + currency
-
+                #print service["name"] +  " - " + tricker_data["main_currency"] + "/" + currency
+                label = "_".join([service["name"],tricker_data["main_currency"],currency])
                 cur_fun = service.get("cur_fun", lambda c:c)
-
                 response = _request(service["ticker"], cur_fun(currency))
-                t = _parse_json(response)
-                last_extractor = service["last_extractor"]
 
-                format_ = "{0:6.%df}" % ( 4 if currency == "BTC" else 2)
-                data[service["name"] + '_price_' + currency] = format_.format(last_extractor(t)).replace(".", ",")
+                if response != "ERR":
+                    t = _parse_json(response)
+                    last_extractor = service["last_extractor"]
 
-                #print " -  OK"
+                    format_ = "{0:6.%df}" % service.get("precision",(4 if currency == "BTC" else 2))
+                    data[label] = format_.format(last_extractor(t)).replace(".", ",")
+                else:
+                    data[label] = "#ERR#"
+
+                #print data[label]
 
         curs = set()
         for service in tricker_data["services"]:
@@ -158,10 +183,8 @@ def get_prices(trickers):
         for service in tricker_data["services"]:
             data["entry_price"] += '`{:12s} '.format(service["name"]) + "|"
             for currency in curs:
-                if service["name"] + '_price_' + currency in data:
-                    data["entry_price"] += "{:>8s} ".format(data[service["name"] + '_price_' + currency]) + "|"
-                else:
-                    data["entry_price"] += "{:>8s} ".format("") + "|"
+                label = "_".join([service["name"],tricker_data["main_currency"],currency])
+                data["entry_price"] += "{:>8s} ".format(data.get(label, "")) + "|"
 
             data["entry_price"] += '`\n'
 
@@ -172,7 +195,8 @@ def get_prices(trickers):
 
 def get_fallow_tags(h):
     data = {}
-    data["fallow_tags"]="\n\n%s - tag do subskrybcji co 24h (12:00)\n" % generate_sub_tag(h, 24)
+    data["fallow_tags"] = "\n\n#bitcoinbot - tag do dodawania na [czarna liste](http://www.wykop.pl/ustawienia/czarne-listy/)\n"
+    data["fallow_tags"] = "%s - tag do subskrybcji co 24h (12:00)\n" % generate_sub_tag(h, 24)
     data["fallow_tags"]+= "%s - tag do subskrybcji co 12h (0:00/12:00)\n" % generate_sub_tag(h, 12)
     data["fallow_tags"]+= "%s - tag do subskrybcji co 6h (0/6/12/18)\n" % generate_sub_tag(h, 6)
     data["fallow_tags"]+= "%s - tag do subskrybcji co 3h (0/3/6/9/12/15/18/21)\n" % generate_sub_tag(h, 3)
@@ -181,7 +205,10 @@ def get_fallow_tags(h):
     return data
 
 def get_ps():
-    return {"ps": "#bitcoinbot\n\nPS. Stworzyl mnie @[noisy](http://www.wykop.pl/ludzie/noisy), do niego prosze kierowac pomysly i sugestie na temat mojego rozwoju."}
+    return {"ps": "\n\nPS. Stworzyl mnie @[noisy](http://www.wykop.pl/ludzie/noisy), do niego prosze kierowac pomysly i sugestie na temat mojego rozwoju."}
+
+def get_addresses():
+    return {"addresses":"\n\n**Lubisz bitcoinbota**? \n! Wesprzyj jego rozwoj:\n! LTC: LYQPBdu9PHpKnknWgeKy2y3FJEgdmoE94Q\n! FTC: 6gjVfpj6wCskEdHLRdAStLaRsR4LjRBdXr\n! BTC jest zbyt mainstreamowy :P \n! \n! Lista chwaly: \n! - mozesz byc pierwszy :)\n" }
 
 def generate_sub_tag(h, arg):
     return "#bitcoinbot%s" % arg if h % arg == 0 else "[bitcoinbot%s](http://www.wykop.pl/tag/bitcoinbot%s/)" % (arg, arg)
@@ -192,6 +219,7 @@ LOGIN = ''
 ACCOUNTKEY=""
 
 def main():
+    start = time.time()
 
     api = wykop.WykopAPI(APPKEY, SECRETKEY)
     api.authenticate(LOGIN, ACCOUNTKEY)
@@ -202,13 +230,16 @@ def main():
     data.update(get_entries_from_tag(api, "bitcoin"))
     data.update(get_ps())
     data.update(get_fallow_tags(datetime.datetime.now().hour))
+    data.update(get_addresses())
 
     entry = ""
 
-    for entry_data in ["bitcoin_entry_links", "bitcoin_entry_micros", "ps", "fallow_tags"]:
+    for entry_data in ["bitcoin_entry_links", "bitcoin_entry_micros", "fallow_tags", "ps", "addresses"]:
         entry += data.get(entry_data, "")
 
+
     entry = data["entry_price"] + unidecode(entry)
+    entry += "\nCzas generowania: %.4f s" % (time.time() - start)
 
     #print entry
     api.add_entry(entry)
