@@ -196,7 +196,7 @@ def get_prices(trickers):
 def get_fallow_tags(h):
     data = {}
     data["fallow_tags"] = "\n\n#bitcoinbot - tag do dodawania na [czarna liste](http://www.wykop.pl/ustawienia/czarne-listy/)\n"
-    data["fallow_tags"] = "%s - tag do subskrybcji co 24h (12:00)\n" % generate_sub_tag(h, 24)
+    data["fallow_tags"]+= "%s - tag do subskrybcji co 24h (12:00)\n" % generate_sub_tag(h+12, 24)
     data["fallow_tags"]+= "%s - tag do subskrybcji co 12h (0:00/12:00)\n" % generate_sub_tag(h, 12)
     data["fallow_tags"]+= "%s - tag do subskrybcji co 6h (0/6/12/18)\n" % generate_sub_tag(h, 6)
     data["fallow_tags"]+= "%s - tag do subskrybcji co 3h (0/3/6/9/12/15/18/21)\n" % generate_sub_tag(h, 3)
