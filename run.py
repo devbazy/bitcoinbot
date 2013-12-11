@@ -157,7 +157,7 @@ def get_entries_from_tag(api, tag, h, lenght = 60, max = 5):
         for micro_entry in top_micros:
 
             title = html2text.html2text(micro_entry['body'])
-            for f, r in [('\n', '. '), ('#', ''), ('(\. )+', '. '), ('\ +', ' '), ('\[', ''),  ('\]', '')]:
+            for f, r in [('\n', '. '), ('#', ''), ('@', ''), ('(\. )+', '. '), ('\ +', ' '), ('\[', ''),  ('\]', '')]:
                 title = re.sub(f, r, title)
 
             micro_entry['title'] = title[:lenght] + u"..."
