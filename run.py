@@ -247,10 +247,38 @@ def get_addresses():
 def generate_sub_tag(h, arg):
     return u"#bitcoinbot%s" % arg if h % arg == 0 else u"[bitcoinbot%s](http://www.wykop.pl/tag/bitcoinbot%s/)" % (arg, arg)
 
+def generete_doge_info(KEY):
+    data = {"doge":{}, "doge_info":""}
+    for api_fun in ['getblocksfound', 'getpoolsharerate', 'getdifficulty', 'getcurrentworkers']:
+        url = "http://doge.msurma.net/index.php?page=api&action=%(api_fun)s&api_key=%(key)s&id=218" % {"key":KEY, "api_fun":api_fun}
+        response = _request(url, "");
+        data["doge"][api_fun] = None
+        if response != "ERR":
+            data["doge"][api_fun] = _parse_json(response)[api_fun]
+
+    finders = []
+    for d in data["doge"]["getblocksfound"]["data"]:
+        if datetime.datetime.fromtimestamp(d["time"]) > datetime.datetime.now() - datetime.timedelta(minutes=60):
+            finders.append(d)
+
+    if len(finders) > 0:
+        data["doge_info"] += u"W ciągu ostatniej godziny w wykopowym poolu dogecoinowy block %(znalezc)s:\n" % {"znalezc" :u"znalazł" if len(finders) == 1 else u"znalaleźli"}
+        for finder in finders:
+            data["doge_info"] += " - " + finder["finder"] + "\n"
+
+    data["doge_info"] += u"Moc [wykopowego](http://doge.msurma.net/) poola dogecoina: " + data["doge"]["getpoolsharerate"] + " MH/s\n"
+    data["doge_info"] += u"Liczba pracujących górników: " + str(data["doge"]["getcurrentworkers"]["data"]) + "\n"
+    data["doge_info"] += u"Średnia wydajność górnika: " + "%.2f" % ((float(data["doge"]["getpoolsharerate"]) * 1024) / data["doge"]["getcurrentworkers"]["data"]) + " KH/s\n"
+    data["doge_info"] += u"Obecna trudność kopania dogecoina: " + str(data["doge"]["getdifficulty"]["data"]) + "\n"
+
+    return data
+
 APPKEY=""
 SECRETKEY=""
 LOGIN = ''
 ACCOUNTKEY=""
+
+THE_SERAPHER_API_KEY = ""
 
 def main():
     start = time.time()
@@ -263,13 +291,14 @@ def main():
     h = datetime.datetime.now().hour
     data.update(get_prices(TRICKERS))
     data.update(get_entries_from_tag(api, "bitcoin", h))
+    data.update(generete_doge_info(THE_SERAPHER_API_KEY))
     data.update(get_ps())
     data.update(get_fallow_tags(h))
     data.update(get_addresses())
 
     entry = u""
 
-    for entry_data in ["entry_price", "bitcoin_entry_links", "bitcoin_entry_micros", "ps", "fallow_tags", "addresses"]:
+    for entry_data in ["entry_price", "bitcoin_entry_links", "bitcoin_entry_micros", "doge_info", "ps", "fallow_tags", "addresses"]:
         entry += data.get(entry_data, "")
 
     entry += u"\nCzas generowania: %.4f s" % (time.time() - start)
